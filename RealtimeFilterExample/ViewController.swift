@@ -23,7 +23,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         if self.setupCamera() {
             self.session.startRunning()
         } else {
-            println("setupCamera error!")
+            assertionFailure("setupCamera error!")
         }
     }
 
@@ -32,10 +32,10 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         var targetDevice : AVCaptureDevice?
         
-        let devices = AVCaptureDevice.devicesWithMediaType(AVMediaTypeVideo) as [AVCaptureDevice]
+        let devices = AVCaptureDevice.devicesWithMediaType(AVMediaTypeVideo) as! [AVCaptureDevice]
         for device in devices {
             if device.position == .Back {
-                targetDevice = device as AVCaptureDevice
+                targetDevice = device
                 break
             }
         }
@@ -45,29 +45,37 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         }
         
         var inputError: NSError?
-        let input: AVCaptureDeviceInput? = AVCaptureDeviceInput.deviceInputWithDevice(targetDevice, error: &inputError) as? AVCaptureDeviceInput
-        if let aInput = input {
-            if self.session.canAddInput(aInput) {
-                self.session.addInput(aInput)
-            } else {
-                return false
-            }
+        let input: AVCaptureDeviceInput
+        do {
+            input = try AVCaptureDeviceInput(device: targetDevice!)
+        } catch {
+            return false
+        }
+        
+        if self.session.canAddInput(input) {
+            self.session.addInput(input)
         } else {
-            if let error = inputError {
-                println("input error: \(error.localizedDescription)")
-            }
             return false
         }
         
         var lockError: NSError?
-        if targetDevice!.lockForConfiguration(&lockError) {
+        do {
+            try targetDevice!.lockForConfiguration()
             if let error = lockError {
-                println("lock error: \(error.localizedDescription)")
+                print("lock error: \(error.localizedDescription)")
                 return false
             } else {
+                if targetDevice!.smoothAutoFocusSupported {
+                    targetDevice!.smoothAutoFocusEnabled = true
+                }
+                if targetDevice!.autoFocusRangeRestrictionSupported {
+                    targetDevice!.focusMode = .ContinuousAutoFocus
+                }
                 targetDevice!.activeVideoMinFrameDuration = CMTimeMake(1, 15)
                 targetDevice!.unlockForConfiguration()
             }
+        } catch var error as NSError {
+            lockError = error
         }
         
         let queue = dispatch_queue_create("realtime_filter_example_queue", DISPATCH_QUEUE_SERIAL)
@@ -83,7 +91,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             return false
         }
         
-        for connection in output.connections as [AVCaptureConnection] {
+        for connection in output.connections as! [AVCaptureConnection] {
             if connection.supportsVideoOrientation {
                 connection.videoOrientation = AVCaptureVideoOrientation.Portrait
             }
@@ -107,20 +115,19 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     // @see : http://giveitashot.hatenadiary.jp/entry/2014/10/19/190505
     
     func imageFromSampleBuffer(sampleBuffer: CMSampleBufferRef) -> UIImage? {
-        let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
         
         CVPixelBufferLockBaseAddress(imageBuffer, 0)
         
-        let baseAddress = CVPixelBufferGetBaseAddressOfPlane(imageBuffer, UInt(0))
+        let baseAddress = CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0)
         
         let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
         let width = CVPixelBufferGetWidth(imageBuffer)
         let height = CVPixelBufferGetHeight(imageBuffer)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         
-        let bitsPerCompornent : UInt = 8
-        var bitmapInfo = CGBitmapInfo(CGBitmapInfo.ByteOrder32Little.rawValue | CGImageAlphaInfo.PremultipliedFirst.rawValue)
-        let newContext = CGBitmapContextCreate(baseAddress, width, height, bitsPerCompornent, bytesPerRow, colorSpace, bitmapInfo)
+        var bitmapInfo = CGBitmapInfo(rawValue: CGBitmapInfo.ByteOrder32Little.rawValue | CGImageAlphaInfo.PremultipliedFirst.rawValue)
+        let newContext = CGBitmapContextCreate(baseAddress, width, height, 8, bytesPerRow, colorSpace, bitmapInfo)
         
         let imageRef = CGBitmapContextCreateImage(newContext)
         let resultImage = UIImage(CGImage: imageRef)
