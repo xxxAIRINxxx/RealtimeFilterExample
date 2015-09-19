@@ -44,7 +44,6 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             return false
         }
         
-        var inputError: NSError?
         let input: AVCaptureDeviceInput
         do {
             input = try AVCaptureDeviceInput(device: targetDevice!)
@@ -74,14 +73,14 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
                 targetDevice!.activeVideoMinFrameDuration = CMTimeMake(1, 15)
                 targetDevice!.unlockForConfiguration()
             }
-        } catch var error as NSError {
+        } catch let error as NSError {
             lockError = error
         }
         
         let queue = dispatch_queue_create("realtime_filter_example_queue", DISPATCH_QUEUE_SERIAL)
         
-        var output : AVCaptureVideoDataOutput = AVCaptureVideoDataOutput()
-        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA]
+        let output : AVCaptureVideoDataOutput = AVCaptureVideoDataOutput()
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey : NSNumber(int: Int32(kCVPixelFormatType_32BGRA.value))]
         output.setSampleBufferDelegate(self, queue: queue)
         output.alwaysDiscardsLateVideoFrames = true
         
@@ -119,18 +118,18 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         CVPixelBufferLockBaseAddress(imageBuffer, 0)
         
-        let baseAddress = CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0)
-        
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
-        let width = CVPixelBufferGetWidth(imageBuffer)
-        let height = CVPixelBufferGetHeight(imageBuffer)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        
-        var bitmapInfo = CGBitmapInfo(rawValue: CGBitmapInfo.ByteOrder32Little.rawValue | CGImageAlphaInfo.PremultipliedFirst.rawValue)
-        let newContext = CGBitmapContextCreate(baseAddress, width, height, 8, bytesPerRow, colorSpace, bitmapInfo)
+        let newContext = CGBitmapContextCreate(
+            CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0),
+            CVPixelBufferGetWidth(imageBuffer),
+            CVPixelBufferGetHeight(imageBuffer),
+            8,
+            CVPixelBufferGetBytesPerRow(imageBuffer),
+            CGColorSpaceCreateDeviceRGB(),
+            CGImageAlphaInfo.PremultipliedLast.rawValue
+        )
         
         let imageRef = CGBitmapContextCreateImage(newContext)
-        let resultImage = UIImage(CGImage: imageRef)
+        let resultImage = UIImage(CGImage: imageRef!)
         
         return resultImage
     }
